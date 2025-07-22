@@ -109,7 +109,7 @@ feature.formdata = window.FormData !== undefined;
 var hasProp = !!$.fn.prop;
 
 // attr2 uses prop when it can but checks the return type for
-// an expected string.  this accounts for the case where a form 
+// an expected string.  this accounts for the case where a form
 // contains inputs with names like "action" or "method"; in those
 // cases "prop" returns the element
 $.fn.attr2 = function() {
@@ -474,7 +474,7 @@ $.fn.ajaxSubmit = function(options) {
 
         var CLIENT_TIMEOUT_ABORT = 1;
         var SERVER_ABORT = 2;
-                
+
         function getDoc(frame) {
             /* it looks like contentWindow or contentDocument do not
              * carry the protocol property in ie8, when running under ssl
@@ -482,9 +482,9 @@ $.fn.ajaxSubmit = function(options) {
              * the protocol is know but not on the other two objects. strange?
              * "Same origin policy" http://en.wikipedia.org/wiki/Same_origin_policy
              */
-            
+
             var doc = null;
-            
+
             // IE8 cascading access check
             try {
                 if (frame.contentWindow) {
@@ -624,7 +624,7 @@ $.fn.ajaxSubmit = function(options) {
             if (xhr.aborted || callbackProcessed) {
                 return;
             }
-            
+
             doc = getDoc(io);
             if(!doc) {
                 log('cannot access response document');
@@ -1268,7 +1268,7 @@ var form = function(){
                 $radio.on('change', function(){
                     changeTitle($this, $(this));
                 });
-                
+
             });
             $(document).on('click', function(e){
                 var $this = $(e.target);
@@ -1282,7 +1282,7 @@ var form = function(){
                     $('.selectList').removeClass('selectList_OPEN');
                 }
             });
-            
+
             // Валидация полей
             $input.on('blur', function(){
                 var $this = $(this),
@@ -1318,10 +1318,10 @@ var form = function(){
                                         message += 'Код должен состоять из 6 цифр';
                                         error = true;
                                 }
-            
+
                         }
                     });
-                    
+
                     if (error) {
                         if ($this.hasClass('form-input')){
                             $this.addClass('form-input_error');
@@ -1333,7 +1333,7 @@ var form = function(){
                             $this.after('<div class="form-error">'+message+'</div>');
                         } else {
                             $this.next('.form-error').text(message);
-            
+
                         }
                         $this.data('errorinput', true);
                     } else {
@@ -1348,7 +1348,7 @@ var form = function(){
             $form.on('submit', function(e){
                 var $this = $(this),
                     $validate = $this.find('[data-validate]');
-                
+
                 $validate.each(function(){
                     var $this = $(this);
                     $this.trigger('blur');
@@ -1457,7 +1457,7 @@ var API = function(){
             }
         });
     }
-    
+
     var send = {
         startIndexing:{
             address: '/startIndexing',
@@ -1563,7 +1563,7 @@ var API = function(){
                     } else {
                         $('.SearchResult-footer').addClass('SearchResult-footer_hide')
                     }
-                    
+
                 } else {
                     if ($this.next('.API-error').length) {
                         $this.next('.API-error').text(result.error);
@@ -1573,105 +1573,123 @@ var API = function(){
                 }
             }
         },
-        statistics: {
-            address: '/statistics',
-            type: 'get',
-            action: function(result, $this){
-                if (result.result){
-                    if ($this.next('.API-error').length) {
-                        $this.next('.API-error').remove();
-                    }
-    
-                    var $statistics = $('.Statistics');
-                    $statistics.find('.HideBlock').not('.Statistics-example').remove();
-                    $('#totalSites').text(result.statistics.total.sites);
-                    $('#totalPages').text(result.statistics.total.pages);
-                    $('#totalLemmas').text(result.statistics.total.lemmas);
-                    $('select[name="site"] option').not(':first-child').remove();
-                    result.statistics.detailed.forEach(function(site){
-                        var $blockSiteExample = $('.Statistics-example').clone(true);
-                        var statusClass = '';
-                        switch (site.status) {
-                            case 'INDEXED':
-                                statusClass = 'Statistics-status_checked';
-                                break;
-                            case 'FAILED':
-                                statusClass = 'Statistics-status_cancel';
-                                break;
-                            case 'INDEXING':
-                                statusClass = 'Statistics-status_pause';
-                                break;
-                            
+                statistics: {
+                    address: '/statistics',
+                    type: 'get',
+                    action: function(result, $this){
+                        if (result.result){
+                            if ($this.next('.API-error').length) {
+                                $this.next('.API-error').remove();
+                            }
+
+
+                            var openUrl = $('.Statistics .HideBlock:not(.HideBlock_CLOSE)').data('url');
+
+                            var $statistics = $('.Statistics');
+                            $statistics.find('.HideBlock').not('.Statistics-example').remove();
+                            $('#totalSites').text(result.statistics.total.sites);
+                            $('#totalPages').text(result.statistics.total.pages);
+                            $('#totalLemmas').text(result.statistics.total.lemmas);
+                            $('select[name="site"] option').not(':first-child').remove();
+                            result.statistics.detailed.forEach(function(site){
+                                var $blockSiteExample = $('.Statistics-example').clone(true);
+                                var statusClass = '';
+                                switch (site.status) {
+                                    case 'INDEXED':
+                                        statusClass = 'Statistics-status_checked';
+                                        break;
+                                    case 'FAILED':
+                                        statusClass = 'Statistics-status_cancel';
+                                        break;
+                                    case 'INDEXING':
+                                        statusClass = 'Statistics-status_pause';
+                                        break;
+
+                                }
+                                $('select[name="site"]').append('<option value="' + site.url + '">' + site.url + '</option>');
+                                $blockSiteExample.removeClass('Statistics-example');
+
+
+                                $blockSiteExample.attr('data-url', site.url);
+
+                                $blockSiteExample.find('.Statistics-status')
+                                    .addClass(statusClass)
+                                    .text(site.status)
+                                    .before(site.name + ' - ' + site.url);
+                                var time = new Date(site.statusTime);
+
+                                var errorText = site.error ? site.error : '';
+
+
+                                $blockSiteExample.find('.Statistics-description')
+                                    .html('<div class="Statistics-option"><strong>Status time:</strong> ' +
+                                        time.getDate() + '.' +
+                                        (time.getMonth() + 1) + '.' +
+                                        time.getFullYear() + ' ' +
+                                        time.getHours() + ':' +
+                                        time.getMinutes() + ':' +
+                                        time.getSeconds() +
+                                        '</div><div class="Statistics-option"><strong>Pages:</strong> ' + site.pages +
+                                        '</div><div class="Statistics-option"><strong>Lemmas:</strong> ' + site.lemmas +
+                                        '</div><div class="Statistics-option Statistics-option_error"><strong>Error:</strong> ' + errorText + '</div>');
+
+
+                                $statistics.append($blockSiteExample);
+                                var $thisHideBlock = $statistics.find('.HideBlock').last();
+                                $thisHideBlock.on('click', HideBlock().trigger);
+
+
+                                $('.Tabs_column > .Tabs-wrap > .Tabs-block').each(function(){
+                                    var $this = $(this);
+                                    if ($this.is(':hidden')){
+                                        $this.addClass('Tabs-block_update');
+                                    };
+                                });
+                                $statistics.find('.HideBlock').each(function(){
+                                    var $this = $(this);
+                                    var height = $this.find('.Statistics-description').outerHeight();
+                                    $this.find('.HideBlock-content').css('height', height + 40);
+                                });
+                                $('.Tabs_column > .Tabs-wrap > .Tabs-block_update').each(function(){
+                                    var $this = $(this);
+                                    $this.removeClass('Tabs-block_update');
+                                });
+                            });
+
+
+                            if (openUrl) {
+                                                    var $blockToOpen = $('.Statistics .HideBlock[data-url="' + openUrl + '"]');
+                                                    $blockToOpen.addClass('no-transition');
+                                                    $blockToOpen.removeClass('HideBlock_CLOSE');
+                                                    setTimeout(function() {
+                                                        $blockToOpen.removeClass('no-transition');
+                                                    }, 10);
+                                                }
+
+                            var isNowIndexing = result.statistics.total.indexing;
+                            var $btnIndex = $('.btn[data-btntype="check"]');
+                            var isButtonInStopState = $btnIndex.data('send') === 'stopIndexing';
+
+                            if (isNowIndexing && !isButtonInStopState) {
+                                shiftCheck($btnIndex);
+                            } else if (!isNowIndexing && isButtonInStopState) {
+                                shiftCheck($btnIndex);
+                            }
+
+                        } else {
+                            if ($this.next('.API-error').length) {
+                                $this.next('.API-error').text(result.error);
+                            } else {
+                                $this.after('<div class="API-error">' + result.error + '</div>');
+                            }
                         }
-                        $('select[name="site"]').append('' +
-                            '<option value="' + site.url + '">' +
-                                site.url +
-                            '</option>')
-                        $blockSiteExample.removeClass('Statistics-example');
-                        $blockSiteExample.find('.Statistics-status')
-                            .addClass(statusClass)
-                            .text(site.status)
-                            .before(site.name + ' - ' + site.url);
-                        var time = new Date(site.statusTime);
-                        $blockSiteExample.find('.Statistics-description')
-                            .html('<div class="Statistics-option"><strong>Status time:</strong> ' +
-                                time.getDate() + '.' +
-                                (time.getMonth() + 1) + '.' +
-                                time.getFullYear() + ' ' +
-                                time.getHours() + ':' +
-                                time.getMinutes() + ':' +
-                                time.getSeconds() +
-                                '</div><div class="Statistics-option"><strong>Pages:</strong> ' + site.pages +
-                                '</div><div class="Statistics-option"><strong>Lemmas:</strong> ' + site.lemmas +
-                                '</div><div class="Statistics-option Statistics-option_error"><strong>Error:</strong> ' + site.error + '</div>'+
-                                '')
-    
-                        
-                        $statistics.append($blockSiteExample);
-                        var $thisHideBlock = $statistics.find('.HideBlock').last();
-                        $thisHideBlock.on('click', HideBlock().trigger);
 
-
-                        $('.Tabs_column > .Tabs-wrap > .Tabs-block').each(function(){
-                            var $this = $(this);
-                            if ($this.is(':hidden')){
-                                $this.addClass('Tabs-block_update')
-                            };
-                        });
-                        $statistics.find('.HideBlock').each(function(){
-                            var $this = $(this);
-                            var height = $this.find('.Statistics-description').outerHeight();
-                            $this.find('.HideBlock-content').css('height', height + 40);
-                        });
-                        $('.Tabs_column > .Tabs-wrap > .Tabs-block_update').each(function(){
-                            var $this = $(this);
-                            $this.removeClass('Tabs-block_update')
-                        });
-                    });
-                    if (result.statistics.total.isIndexing) {
-                        var $btnIndex = $('.btn[data-send="startIndexing"]'),
-                            text = $btnIndex.find('.btn-content').text();
-                        $btnIndex.find('.btn-content').text($btnIndex.data('alttext'));
-                        $btnIndex
-                            .data('check', true)
-                            .data('altsend', 'startIndexing')
-                            .data('send', 'stopIndexing')
-                            .data('alttext', text)
-                            .addClass('btn_check')
-                        $('.UpdatePageBlock').hide(0)
-                    }
-    
-                } else {
-                    if ($this.next('.API-error').length) {
-                        $this.next('.API-error').text(result.error);
-                    } else {
-                        $this.after('<div class="API-error">' + result.error + '</div>');
+                        if ($('.Site-loader').is(':visible')) {
+                            $('.Site-loader').hide(0);
+                            $('.Site-loadingIsComplete').css('visibility', 'visible').fadeIn(500);
+                        }
                     }
                 }
-                $('.Site-loader').hide(0);
-                $('.Site-loadingIsComplete').css('visibility', 'visible').fadeIn(500);
-            }
-        }
     };
     function shiftCheck($element, wave){
         var text = '',
@@ -1704,79 +1722,106 @@ var API = function(){
             $element.trigger('changeCheck');
         }
     }
-    return {
-        init: function(){
-            var $btnCheck = $('[data-btntype="check"]');
-            $btnCheck.on('click', function(e){
-                var $this = $(this);
-                if (!$this.data('send')) {
-                    shiftCheck($this);
-                }
-            });
-            $btnCheck.on('changeCheck', function(){
-                var $this = $(this);
-                if ($this.data('btnradio')) {
-                    $('[data-btnradio="' + $this.data('btnradio') + '"]').each(function(e){
-                        if($(this).data('check') && !$(this).is($this)) {
-                            shiftCheck($(this), true);
-                        }
-                    });
-                }
-            });
-            sendData(
-                send['statistics'].address,
-                send['statistics'].type,
-                '',
-                send['statistics'].action,
-                $('.Statistics')
-            )
-            var $send = $('[data-send]');
-            $send.on('submit click', function(e){
-                var $this = $(this);
-                var data = '';
-                if (($this.hasClass('form') && e.type==='submit')
-                    || (e.type==='click' && !$this.hasClass('form'))){
-                    e.preventDefault();
-                    
-                    switch ($this.data('send')) {
-                        case 'indexPage':
-                            var $page = $this.closest('.form').find('input[name="page"]');
-                            data = {url: $page.val()};
-                            break;
-                        case 'search':
-                            if ($this.data('sendtype')==='next') {
-                                data = {
-                                    site: $this.data('searchsite'),
-                                    query: $this.data('searchquery'),
-                                    offset: $this.data('sendoffset'),
-                                    limit: $this.data('sendlimit')
-                                };
-                            } else {
-                                data = {
-                                    query: $this.find('[name="query"]').val(),
-                                    offset: 0,
-                                    limit: $this.data('sendlimit')
-                                };
-                                if ( $this.find('[name="site"]').val() ) {
-                                    data.site = $this.find('[name="site"]').val();
-                                }
-                            }
-                            break;
-        
+        return {
+                init: function(){
+                     $.ajax({
+                                    url: backendApiUrl + '/settings',
+                                    type: 'GET',
+                                    dataType: 'json',
+                                    success: function(settings) {
+
+                                        var updateInterval = settings.updateIntervalMs || 5000;
+
+                                        sendData(
+                                            send['statistics'].address,
+                                            send['statistics'].type,
+                                            '',
+                                            send['statistics'].action,
+                                            $('.Statistics')
+                                        );
+
+
+                                        setInterval(function(){
+                                            sendData(
+                                                send['statistics'].address,
+                                                send['statistics'].type,
+                                                '',
+                                                send['statistics'].action,
+                                                $('.Statistics')
+                                            );
+                                        }, updateInterval);
+                                    },
+                                    error: function() {
+                                        console.error("Не удалось загрузить настройки фронтенда, используется интервал по умолчанию (5000 мс).");
+
+                                    }
+                                });
+
+                var $btnCheck = $('[data-btntype="check"]');
+                $btnCheck.on('click', function(e){
+                    var $this = $(this);
+                    if (!$this.data('send')) {
+                        shiftCheck($this);
                     }
-                    sendData(
-                        send[$this.data('send')].address,
-                        send[$this.data('send')].type,
-                        data,
-                        send[$this.data('send')].action,
-                        $this
-                    )
-                }
-            });
-        }
+                });
+                $btnCheck.on('changeCheck', function(){
+                    var $this = $(this);
+                    if ($this.data('btnradio')) {
+                        $('[data-btnradio="' + $this.data('btnradio') + '"]').each(function(e){
+                            if($(this).data('check') && !$(this).is($this)) {
+                                shiftCheck($(this), true);
+                            }
+                        });
+                    }
+                });
+
+                var $send = $('[data-send]');
+                $send.on('submit click', function(e){
+                    var $this = $(this);
+                    var data = '';
+                    if (($this.hasClass('form') && e.type==='submit')
+                        || (e.type==='click' && !$this.hasClass('form'))){
+                        e.preventDefault();
+
+                        switch ($this.data('send')) {
+                            case 'indexPage':
+                                var $page = $this.closest('.form').find('input[name="page"]');
+                                data = {url: $page.val()};
+                                break;
+                            case 'search':
+                                if ($this.data('sendtype')==='next') {
+                                    data = {
+                                        site: $this.data('searchsite'),
+                                        query: $this.data('searchquery'),
+                                        offset: $this.data('sendoffset'),
+                                        limit: $this.data('sendlimit')
+                                    };
+                                } else {
+                                    data = {
+                                        query: $this.find('[name="query"]').val(),
+                                        offset: 0,
+                                        limit: $this.data('sendlimit')
+                                    };
+                                    if ( $this.find('[name="site"]').val() ) {
+                                        data.site = $this.find('[name="site"]').val();
+                                    }
+                                }
+                                break;
+
+                        }
+                        sendData(
+                            send[$this.data('send')].address,
+                            send[$this.data('send')].type,
+                            data,
+                            send[$this.data('send')].action,
+                            $this
+                        )
+                    }
+                });
+            }
+        };
     };
-};
-API().init();
+    API().init();
 
 var Column = function(){
     return {

@@ -34,11 +34,9 @@ public class SiteCrawler extends RecursiveAction {
 
     @Override
     protected void compute() {
-        if (visitedUrls.contains(pageUrl) || !IndexingServiceImpl.isIndexingRunning()) {
+        if (!IndexingServiceImpl.isIndexing()) {
             return;
         }
-        System.out.println("Начинаю обработку: " + pageUrl);
-        visitedUrls.add(pageUrl);
 
         try {
             Thread.sleep(delay);
@@ -46,13 +44,12 @@ public class SiteCrawler extends RecursiveAction {
             Connection.Response response = Jsoup.connect(pageUrl)
                     .userAgent(userAgent)
                     .referrer(referrer)
-                    .timeout(60000)
+                    .timeout(15000)
                     .ignoreHttpErrors(true)
                     .execute();
 
             String contentType = response.contentType();
             if (contentType != null && !contentType.startsWith("text/html")) {
-                System.out.println("Пропуск (не HTML по заголовку): " + pageUrl);
                 return;
             }
 
@@ -64,29 +61,30 @@ public class SiteCrawler extends RecursiveAction {
                 relativePath = "/";
             }
 
-            synchronized (pageRepository) {
-                Page page = new Page();
-                page.setSite(siteEntity);
-                page.setPath(relativePath);
-                page.setCode(statusCode);
-                page.setContent(content);
-                pageRepository.save(page);
-            }
+            Page page = new Page();
+            page.setSite(siteEntity);
+            page.setPath(relativePath);
+            page.setCode(statusCode);
+            page.setContent(content);
+            pageRepository.save(page);
 
             siteEntity.setStatusTime(LocalDateTime.now());
             siteRepository.save(siteEntity);
 
             if (statusCode >= 200 && statusCode < 300) {
+                document.setBaseUri(pageUrl);
                 Set<String> links = extractLinks(document, siteEntity.getUrl());
-                System.out.println("Успешно обработано: " + pageUrl + ". Найдено новых ссылок: " + links.size());
                 createAndForkSubtasks(links);
-            } else {
-                System.err.println("Страница " + pageUrl + " вернула неуспешный статус: " + statusCode);
             }
         } catch (org.jsoup.UnsupportedMimeTypeException e) {
             System.err.println("Пропуск (неподдерживаемый тип контента): " + pageUrl);
         } catch (java.net.SocketTimeoutException | java.net.SocketException e) {
             System.err.println("Ошибка сети для " + pageUrl + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+        } catch (java.lang.IllegalArgumentException e) {
+            System.err.println("Игнорирую некорректный URL: " + pageUrl + " - " + e.getMessage());
+        } catch (InterruptedException | java.util.concurrent.CancellationException e) {
+            Thread.currentThread().interrupt();
+            System.out.println("Задача для " + pageUrl + " была прервана.");
         } catch (Exception e) {
             String errorMessage = "Критическая ошибка обхода " + pageUrl + ": " + e.getClass().getSimpleName() + " - " + e.getMessage();
             System.err.println(errorMessage);
@@ -99,26 +97,30 @@ public class SiteCrawler extends RecursiveAction {
     private void createAndForkSubtasks(Set<String> links) {
         List<SiteCrawler> subTasks = new ArrayList<>();
         for (String link : links) {
-            if (!visitedUrls.contains(link)) {
+            if (visitedUrls.add(link)) {
                 SiteCrawler task = new SiteCrawler(
                         pageRepository, siteRepository, delay, userAgent, referrer, siteEntity, link, visitedUrls);
-                task.fork();
                 subTasks.add(task);
             }
         }
-        for (SiteCrawler task : subTasks) {
-            task.join();
+        if (!subTasks.isEmpty()) {
+            invokeAll(subTasks);
         }
+    }
+
+    private String normalizeHost(String host) {
+        if (host != null && host.startsWith("www.")) {
+            return host.substring(4);
+        }
+        return host;
     }
 
     private Set<String> extractLinks(Document document, String siteBaseUrl) {
         Set<String> links = new HashSet<>();
         try {
-            String baseHost = new URI(siteBaseUrl).getHost();
-            if (baseHost.startsWith("www.")) {
-                baseHost = baseHost.substring(4);
-            }
+            String normalizedBaseHost = normalizeHost(new URI(siteBaseUrl).getHost());
             Elements elements = document.select("a[href]");
+
             for (Element element : elements) {
                 String absUrl = element.attr("abs:href");
                 if (absUrl.isEmpty() || absUrl.contains("#")) {
@@ -129,23 +131,16 @@ public class SiteCrawler extends RecursiveAction {
                 }
                 try {
                     URI linkUri = new URI(absUrl);
-                    String linkHost = linkUri.getHost();
-                    if (linkHost == null) {
-                        continue;
-                    }
-                    if (linkHost.startsWith("www.")) {
-                        linkHost = linkHost.substring(4);
-                    }
-                    if (!linkHost.equalsIgnoreCase(baseHost)) {
+                    String normalizedLinkHost = normalizeHost(linkUri.getHost());
+
+                    if (normalizedLinkHost == null || !normalizedLinkHost.equalsIgnoreCase(normalizedBaseHost)) {
                         continue;
                     }
                 } catch (Exception e) {
-                    System.err.println("Игнорирую битую ссылку: " + absUrl);
                     continue;
                 }
 
                 absUrl = absUrl.replaceAll("(\\.html)/.*", "$1");
-
                 if (absUrl.endsWith("/")) {
                     absUrl = absUrl.substring(0, absUrl.length() - 1);
                 }

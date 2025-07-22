@@ -2391,3 +2391,6 @@ button.link {
 .wrap-content {
   margin: 0 auto;
 }
+.no-transition, .no-transition * {
+  transition: none !important;
+}

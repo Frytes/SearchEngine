@@ -22,7 +22,10 @@ spring:
 search-settings:
   user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
   referrer: "http://www.google.com"
-  delay: 1000 # Задержка в миллисекундах между запросами
+  delay: 5000 # Задержка в миллисекундах между запросами
+
+frontend-settings:
+  update-interval-ms: 2000 # Интервал обновления в миллисекундах
 
 indexing-settings:
   sites:

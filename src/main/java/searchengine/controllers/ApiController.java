@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import searchengine.dto.indexing.IndexingResponse;
 import searchengine.dto.search.SearchResponse;
+import searchengine.dto.settings.FrontendSettings;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.IndexingService;
 import searchengine.services.StatisticsService;
@@ -17,7 +18,12 @@ public class ApiController {
 
     private final IndexingService indexingService;
     private final StatisticsService statisticsService;
+    private final FrontendSettings frontendSettings;
 
+    @GetMapping("/settings")
+    public ResponseEntity<FrontendSettings> getSettings() {
+        return ResponseEntity.ok(frontendSettings);
+    }
 
     @GetMapping("/startIndexing")
     public ResponseEntity<IndexingResponse> startIndexing() {

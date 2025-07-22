@@ -2,6 +2,7 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
 import searchengine.config.SitesList;
 import searchengine.dto.indexing.IndexingResponse;
@@ -15,18 +16,23 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.services.crawler.SiteCrawler;
 
+import javax.annotation.PostConstruct;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
+
+    private static final AtomicBoolean isIndexingRunning = new AtomicBoolean(false);
+    private final Map<String, ForkJoinPool> activePools = new ConcurrentHashMap<>();
 
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
@@ -34,6 +40,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final IndexRepository indexRepository;
     private final StatisticsService statisticsService;
     private final SitesList sitesConfig;
+    private final TaskExecutor siteIndexingExecutor;
 
     @Value("${search-settings.user-agent}")
     private String userAgent;
@@ -44,90 +51,101 @@ public class IndexingServiceImpl implements IndexingService {
     @Value("${search-settings.delay}")
     private int delay;
 
-    private static volatile boolean isIndexingRunning = false;
+    @PostConstruct
+    public void init() {
+        List<Site> indexingSites = siteRepository.findByStatus(SiteStatus.INDEXING);
+        if (!indexingSites.isEmpty()) {
+            System.out.println("Обнаружены незавершенные процессы индексации. Сброс статуса...");
+            for (Site site : indexingSites) {
+                site.setStatus(SiteStatus.FAILED);
+                site.setLastError("Индексация была прервана из-за перезапуска сервера");
+                siteRepository.save(site);
+            }
+        }
+    }
 
     @Override
     public IndexingResponse startIndexing() {
-        if (isIndexingRunning) {
+        if (isIndexingRunning.compareAndSet(false, true)) {
+            activePools.clear();
+            new Thread(this::logQueueStatus).start();
+
+            sitesConfig.getSites().forEach(siteConfig ->
+                    siteIndexingExecutor.execute(() -> processSite(siteConfig))
+            );
+            return new IndexingResponse(true);
+        } else {
             return new IndexingResponse(false, "Индексация уже запущена");
         }
-
-        isIndexingRunning = true;
-
-        new Thread(() -> {
-            List<Thread> siteThreads = new ArrayList<>();
-            for (searchengine.config.Site siteConfig : sitesConfig.getSites()) {
-                Thread siteThread = new Thread(() -> {
-                    if (!isIndexingRunning) return;
-
-                    findAndRemoveSiteData(siteConfig.getUrl());
-
-                    Site newSiteEntity = new Site();
-                    newSiteEntity.setUrl(siteConfig.getUrl());
-                    newSiteEntity.setName(siteConfig.getName());
-                    newSiteEntity.setStatus(SiteStatus.INDEXING);
-                    newSiteEntity.setStatusTime(LocalDateTime.now());
-                    siteRepository.save(newSiteEntity);
-
-                    ForkJoinPool forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
-                    Set<String> visitedUrlsForSite = ConcurrentHashMap.newKeySet();
-                    SiteCrawler mainTask = new SiteCrawler(
-                            pageRepository, siteRepository, delay, userAgent, referrer, newSiteEntity, newSiteEntity.getUrl(), visitedUrlsForSite
-                    );
-
-                    forkJoinPool.invoke(mainTask);
-
-                    if (isIndexingRunning) {
-                        newSiteEntity.setStatus(SiteStatus.INDEXED);
-                        newSiteEntity.setLastError(null);
-                    } else {
-                        newSiteEntity.setStatus(SiteStatus.FAILED);
-                        newSiteEntity.setLastError("Индексация остановлена пользователем");
-                    }
-                    newSiteEntity.setStatusTime(LocalDateTime.now());
-                    siteRepository.save(newSiteEntity);
-                });
-                siteThreads.add(siteThread);
-                siteThread.start();
-            }
-
-            try {
-                for (Thread thread : siteThreads) {
-                    thread.join();
-                }
-            } catch (InterruptedException e) {
-                System.err.println("Главный поток индексации был прерван.");
-                Thread.currentThread().interrupt();
-            }
-
-            isIndexingRunning = false;
-        }).start();
-
-        return new IndexingResponse(true);
     }
 
-    private void findAndRemoveSiteData(String urlFromConfig) {
-        siteRepository.findByUrl(urlFromConfig).ifPresent(this::deleteSiteData);
+    private void processSite(searchengine.config.Site siteConfig) {
+        if (!isIndexingRunning.get()) {
+            return;
+        }
+
+        ForkJoinPool forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+        activePools.put(siteConfig.getName(), forkJoinPool);
+        Site siteEntity = null;
         try {
-            URL url = new URL(urlFromConfig);
-            String host = url.getHost();
-            String protocol = url.getProtocol();
-            String alternativeUrl;
-            if (host.startsWith("www.")) {
-                alternativeUrl = protocol + "://" + host.substring(4);
+            deleteSiteDataByUrl(siteConfig.getUrl());
+
+            siteEntity = new Site();
+            siteEntity.setUrl(siteConfig.getUrl());
+            siteEntity.setName(siteConfig.getName());
+            siteEntity.setStatus(SiteStatus.INDEXING);
+            siteEntity.setStatusTime(LocalDateTime.now());
+            siteRepository.save(siteEntity);
+
+            Set<String> visitedUrls = ConcurrentHashMap.newKeySet();
+            SiteCrawler mainTask = new SiteCrawler(pageRepository, siteRepository, delay, userAgent, referrer, siteEntity, siteEntity.getUrl(), visitedUrls);
+            forkJoinPool.invoke(mainTask);
+
+            if (isIndexingRunning.get()) {
+                siteEntity.setStatus(SiteStatus.INDEXED);
+                siteEntity.setLastError(null);
             } else {
-                alternativeUrl = protocol + "://www." + host;
+                siteEntity.setStatus(SiteStatus.FAILED);
+                siteEntity.setLastError("Индексация остановлена пользователем");
             }
-            siteRepository.findByUrl(alternativeUrl).ifPresent(this::deleteSiteData);
-            siteRepository.findByUrl(alternativeUrl + "/").ifPresent(this::deleteSiteData);
-            siteRepository.findByUrl(urlFromConfig + "/").ifPresent(this::deleteSiteData);
+        } catch (Exception e) {
+            System.err.println("Критическая ошибка при индексации сайта " + siteConfig.getName());
+            e.printStackTrace();
+            if (siteEntity != null) {
+                siteEntity.setStatus(SiteStatus.FAILED);
+                siteEntity.setLastError("Внутренняя ошибка индексатора: " + e.getMessage());
+            }
+        } finally {
+            if (siteEntity != null) {
+                siteEntity.setStatusTime(LocalDateTime.now());
+                siteRepository.save(siteEntity);
+            }
+            if (!forkJoinPool.isShutdown()) {
+                forkJoinPool.shutdown();
+            }
+            activePools.remove(siteConfig.getName());
+        }
+    }
+
+    private void deleteSiteDataByUrl(String url) {
+        siteRepository.findByUrl(url).ifPresent(this::deleteSiteData);
+        try {
+            URL urlObj = new URL(url);
+            String host = urlObj.getHost();
+            String protocol = urlObj.getProtocol();
+            String rootUrlWithoutWww = protocol + "://" + host.replaceFirst("www\\.", "");
+            String rootUrlWithWww = protocol + "://www." + host.replace("www.", "");
+
+            siteRepository.findByUrl(rootUrlWithoutWww).ifPresent(this::deleteSiteData);
+            siteRepository.findByUrl(rootUrlWithoutWww + "/").ifPresent(this::deleteSiteData);
+            siteRepository.findByUrl(rootUrlWithWww).ifPresent(this::deleteSiteData);
+            siteRepository.findByUrl(rootUrlWithWww + "/").ifPresent(this::deleteSiteData);
         } catch (MalformedURLException e) {
-            System.err.println("Некорректный URL в конфигурации: " + urlFromConfig);
+            System.err.println("Некорректный URL в конфигурации: " + url);
         }
     }
 
     private void deleteSiteData(Site site) {
-        System.out.println("Очистка данных для сайта: " + site.getName() + " (ID: " + site.getId() + ")");
         indexRepository.deleteAllByPageSite(site);
         lemmaRepository.deleteAllBySite(site);
         pageRepository.deleteAllBySite(site);
@@ -136,21 +154,40 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public IndexingResponse stopIndexing() {
-        if (!isIndexingRunning) {
+        if (isIndexingRunning.compareAndSet(true, false)) {
+            activePools.values().forEach(ForkJoinPool::shutdownNow);
+            activePools.clear();
+            return new IndexingResponse(true);
+        } else {
             return new IndexingResponse(false, "Индексация не запущена");
         }
+    }
 
-        isIndexingRunning = false;
-
-        List<Site> sitesInProgress = siteRepository.findByStatus(SiteStatus.INDEXING);
-        for (Site site : sitesInProgress) {
-            site.setStatus(SiteStatus.FAILED);
-            site.setLastError("Индексация остановлена пользователем");
-            site.setStatusTime(LocalDateTime.now());
-            siteRepository.save(site);
+    private void logQueueStatus() {
+        try {
+            Thread.sleep(15000);
+            while (isIndexingRunning.get()) {
+                System.out.println("\n--- Статус очередей индексации ---");
+                if (activePools.isEmpty()) {
+                    System.out.println("Все задачи по индексации сайтов завершены или еще не начаты.");
+                } else {
+                    activePools.forEach((siteName, pool) -> {
+                        System.out.printf(
+                                "Сайт: %-20s | В очереди: %-5d | Активных потоков: %d/%d%n",
+                                siteName,
+                                pool.getQueuedTaskCount(),
+                                pool.getActiveThreadCount(),
+                                pool.getPoolSize()
+                        );
+                    });
+                }
+                System.out.println("------------------------------------\n");
+                Thread.sleep(15000);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.out.println("Поток мониторинга очередей остановлен.");
         }
-
-        return new IndexingResponse(true);
     }
 
     @Override
@@ -168,7 +205,7 @@ public class IndexingServiceImpl implements IndexingService {
         return new SearchResponse(false, "Поиск в данный момент не реализован.");
     }
 
-    public static boolean isIndexingRunning() {
-        return isIndexingRunning;
+    public static boolean isIndexing() {
+        return isIndexingRunning.get();
     }
 }
