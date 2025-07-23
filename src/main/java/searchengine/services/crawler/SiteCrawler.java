@@ -13,7 +13,9 @@ import searchengine.repositories.SiteRepository;
 import searchengine.services.IndexingServiceImpl;
 
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -31,6 +33,7 @@ public class SiteCrawler extends RecursiveAction {
     private final searchengine.model.Site siteEntity;
     private final String pageUrl;
     private final Set<String> visitedUrls;
+    private final boolean isRootPage;
 
     @Override
     protected void compute() {
@@ -68,7 +71,7 @@ public class SiteCrawler extends RecursiveAction {
             page.setContent(content);
             pageRepository.save(page);
 
-            siteEntity.setStatusTime(LocalDateTime.now());
+            siteEntity.setStatusTime(LocalDateTime.now(ZoneOffset.UTC));
             siteRepository.save(siteEntity);
 
             if (statusCode >= 200 && statusCode < 300) {
@@ -78,8 +81,16 @@ public class SiteCrawler extends RecursiveAction {
             }
         } catch (org.jsoup.UnsupportedMimeTypeException e) {
             System.err.println("Пропуск (неподдерживаемый тип контента): " + pageUrl);
-        } catch (java.net.SocketTimeoutException | java.net.SocketException e) {
-            System.err.println("Ошибка сети для " + pageUrl + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+        } catch (java.net.SocketTimeoutException | java.net.SocketException | UnknownHostException e) {
+            if (isRootPage) {
+                String errorMessage = "Критическая ошибка: не удалось подключиться к главной странице сайта " + pageUrl;
+                System.err.println(errorMessage + " " + e.getMessage());
+                siteEntity.setLastError(errorMessage);
+                siteEntity.setStatus(SiteStatus.FAILED);
+                siteRepository.save(siteEntity);
+            } else {
+                System.err.println("Ошибка сети для " + pageUrl + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            }
         } catch (java.lang.IllegalArgumentException e) {
             System.err.println("Игнорирую некорректный URL: " + pageUrl + " - " + e.getMessage());
         } catch (InterruptedException | java.util.concurrent.CancellationException e) {
@@ -99,7 +110,7 @@ public class SiteCrawler extends RecursiveAction {
         for (String link : links) {
             if (visitedUrls.add(link)) {
                 SiteCrawler task = new SiteCrawler(
-                        pageRepository, siteRepository, delay, userAgent, referrer, siteEntity, link, visitedUrls);
+                        pageRepository, siteRepository, delay, userAgent, referrer, siteEntity, link, visitedUrls, false);
                 subTasks.add(task);
             }
         }

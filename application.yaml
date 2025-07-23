@@ -6,7 +6,7 @@ spring:
   datasource:
     username: root
     password: QWE123
-    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
   jpa:
     properties:
       hibernate:

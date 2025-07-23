@@ -20,6 +20,7 @@ import javax.annotation.PostConstruct;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -94,11 +95,11 @@ public class IndexingServiceImpl implements IndexingService {
             siteEntity.setUrl(siteConfig.getUrl());
             siteEntity.setName(siteConfig.getName());
             siteEntity.setStatus(SiteStatus.INDEXING);
-            siteEntity.setStatusTime(LocalDateTime.now());
+            siteEntity.setStatusTime(LocalDateTime.now(ZoneOffset.UTC));
             siteRepository.save(siteEntity);
 
             Set<String> visitedUrls = ConcurrentHashMap.newKeySet();
-            SiteCrawler mainTask = new SiteCrawler(pageRepository, siteRepository, delay, userAgent, referrer, siteEntity, siteEntity.getUrl(), visitedUrls);
+            SiteCrawler mainTask = new SiteCrawler(pageRepository, siteRepository, delay, userAgent, referrer, siteEntity, siteEntity.getUrl(), visitedUrls, true);
             forkJoinPool.invoke(mainTask);
 
             if (isIndexingRunning.get()) {
@@ -117,7 +118,7 @@ public class IndexingServiceImpl implements IndexingService {
             }
         } finally {
             if (siteEntity != null) {
-                siteEntity.setStatusTime(LocalDateTime.now());
+                siteEntity.setStatusTime(LocalDateTime.now(ZoneOffset.UTC));
                 siteRepository.save(siteEntity);
             }
             if (!forkJoinPool.isShutdown()) {
