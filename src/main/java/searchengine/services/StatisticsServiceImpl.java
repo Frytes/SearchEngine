@@ -8,13 +8,13 @@ import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.dto.statistics.TotalStatistics;
 import searchengine.model.Site;
 import searchengine.model.SiteStatus;
+import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +22,7 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
+    private final LemmaRepository lemmaRepository;
 
     @Override
     public StatisticsResponse getStatistics() {
@@ -30,12 +31,9 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<Site> sitesList = siteRepository.findAll();
 
         total.setSites(sitesList.size());
-        total.setPages((int) pageRepository.count());
+        total.setIndexing(sitesList.stream().anyMatch(s -> s.getStatus() == SiteStatus.INDEXING));
 
-        boolean isIndexing = sitesList.stream()
-                .anyMatch(site -> site.getStatus() == SiteStatus.INDEXING);
-        total.setIndexing(isIndexing);
-
+        long totalPages = 0;
         long totalLemmas = 0;
 
         for (Site site : sitesList) {
@@ -50,15 +48,17 @@ public class StatisticsServiceImpl implements StatisticsService {
             }
 
             int pagesCount = pageRepository.countBySite(site);
-            item.setPages(pagesCount);
+            int lemmasCount = lemmaRepository.countBySite(site);
 
-            int lemmasCount = pagesCount * ThreadLocalRandom.current().nextInt(50, 200);
+            item.setPages(pagesCount);
             item.setLemmas(lemmasCount);
 
+            totalPages += pagesCount;
             totalLemmas += lemmasCount;
             detailed.add(item);
         }
 
+        total.setPages((int) totalPages);
         total.setLemmas((int) totalLemmas);
 
         StatisticsData data = new StatisticsData();

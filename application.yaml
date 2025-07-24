@@ -7,6 +7,10 @@ spring:
     username: root
     password: QWE123
     url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+  hikari:
+    maximum-pool-size: 50
+    connection-timeout: 60000
+    minimum-idle: 5
   jpa:
     properties:
       hibernate:
@@ -25,7 +29,7 @@ search-settings:
   delay: 5000 # Задержка в миллисекундах между запросами
 
 frontend-settings:
-  update-interval-ms: 2000 # Интервал обновления в миллисекундах
+  update-interval-ms: 1000 # Интервал обновления в миллисекундах
 
 indexing-settings:
   sites:

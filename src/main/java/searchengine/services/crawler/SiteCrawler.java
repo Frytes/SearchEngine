@@ -6,11 +6,14 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import searchengine.dto.indexing.LemmaDto;
 import searchengine.model.Page;
 import searchengine.model.SiteStatus;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.DataCollector;
 import searchengine.services.IndexingServiceImpl;
+import searchengine.services.LemmaEngine;
 
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -19,7 +22,9 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.RecursiveAction;
 
 @RequiredArgsConstructor
@@ -27,6 +32,8 @@ public class SiteCrawler extends RecursiveAction {
 
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
+    private final LemmaEngine lemmaEngine;
+    private final DataCollector dataCollector;
     private final int delay;
     private final String userAgent;
     private final String referrer;
@@ -75,6 +82,9 @@ public class SiteCrawler extends RecursiveAction {
             siteRepository.save(siteEntity);
 
             if (statusCode >= 200 && statusCode < 300) {
+                Map<String, Integer> lemmas = lemmaEngine.getLemmaMap(lemmaEngine.cleanHtml(content));
+                dataCollector.addLemmaDto(new LemmaDto(page, lemmas));
+
                 document.setBaseUri(pageUrl);
                 Set<String> links = extractLinks(document, siteEntity.getUrl());
                 createAndForkSubtasks(links);
@@ -93,7 +103,7 @@ public class SiteCrawler extends RecursiveAction {
             }
         } catch (java.lang.IllegalArgumentException e) {
             System.err.println("Игнорирую некорректный URL: " + pageUrl + " - " + e.getMessage());
-        } catch (InterruptedException | java.util.concurrent.CancellationException e) {
+        } catch (InterruptedException | CancellationException e) {
             Thread.currentThread().interrupt();
             System.out.println("Задача для " + pageUrl + " была прервана.");
         } catch (Exception e) {
@@ -110,7 +120,7 @@ public class SiteCrawler extends RecursiveAction {
         for (String link : links) {
             if (visitedUrls.add(link)) {
                 SiteCrawler task = new SiteCrawler(
-                        pageRepository, siteRepository, delay, userAgent, referrer, siteEntity, link, visitedUrls, false);
+                        pageRepository, siteRepository, lemmaEngine, dataCollector, delay, userAgent, referrer, siteEntity, link, visitedUrls, false);
                 subTasks.add(task);
             }
         }
