@@ -78,7 +78,9 @@ public class IndexingServiceImpl implements IndexingService {
         if (isIndexingRunning.compareAndSet(false, true)) {
             activePools.clear();
             new Thread(this::logQueueStatus).start();
-
+             System.out.println("Этап удаления данных...");
+            sitesConfig.getSites().forEach(siteConfig -> deleteSiteDataByUrl(siteConfig.getUrl()));
+            System.out.println("Этап удаления завершен.");
             sitesConfig.getSites().forEach(siteConfig ->
                     siteIndexingExecutor.execute(() -> processSite(siteConfig))
             );
@@ -134,7 +136,20 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private void deleteSiteDataByUrl(String url) {
-        siteRepository.findByUrl(url).ifPresent(this::deleteSiteData);
+        try {
+            URL urlObj = new URL(url);
+            String host = urlObj.getHost();
+            String protocol = urlObj.getProtocol();
+            String rootUrlWithoutWww = protocol + "://" + host.replaceFirst("www\\.", "");
+            String rootUrlWithWww = protocol + "://" + host.replace("www.", "");
+
+            siteRepository.findByUrl(rootUrlWithoutWww).ifPresent(this::deleteSiteData);
+            siteRepository.findByUrl(rootUrlWithoutWww + "/").ifPresent(this::deleteSiteData);
+            siteRepository.findByUrl(rootUrlWithWww).ifPresent(this::deleteSiteData);
+            siteRepository.findByUrl(rootUrlWithWww + "/").ifPresent(this::deleteSiteData);
+        } catch (MalformedURLException e) {
+            System.err.println("Некорректный URL в конфигурации: " + url);
+        }
     }
 
     private void deleteSiteData(Site site) {
