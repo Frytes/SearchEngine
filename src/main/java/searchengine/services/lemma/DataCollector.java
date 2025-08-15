@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.lemma;
 
 import org.springframework.stereotype.Component;
 import searchengine.dto.indexing.LemmaDto;

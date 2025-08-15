@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.lemma;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

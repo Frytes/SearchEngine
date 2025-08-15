@@ -11,9 +11,9 @@ import searchengine.model.Page;
 import searchengine.model.SiteStatus;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
-import searchengine.services.DataCollector;
-import searchengine.services.IndexingServiceImpl;
-import searchengine.services.LemmaEngine;
+import searchengine.services.lemma.DataCollector;
+import searchengine.services.indexing.IndexingServiceImpl;
+import searchengine.services.lemma.LemmaEngine;
 
 import java.net.URI;
 import java.net.UnknownHostException;

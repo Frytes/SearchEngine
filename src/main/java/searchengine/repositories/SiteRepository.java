@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface SiteRepository extends JpaRepository<Site, Integer> {
     Optional<Site> findByUrl(String url);
     List<Site> findByStatus(SiteStatus status);
+    List<Site> findAllByUrlContaining(String host);
 }
