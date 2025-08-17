@@ -1,6 +1,7 @@
 package searchengine.services.indexing;
 
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.services.crawler.PageProcessorService;
 import searchengine.services.crawler.SiteCrawler;
+import searchengine.services.search.SearchService;
 import searchengine.services.statistics.StatisticsService;
 
 import javax.annotation.PostConstruct;
@@ -38,7 +40,6 @@ public class IndexingServiceImpl implements IndexingService {
     private static final AtomicBoolean isIndexingRunning = new AtomicBoolean(false);
     private final Map<String, ForkJoinPool> activePools = new ConcurrentHashMap<>();
 
-
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
     private final LemmaRepository lemmaRepository;
@@ -49,6 +50,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final StatisticsService statisticsService;
     private final PageProcessorService pageProcessor;
     private final PageManagementService pageManagementService;
+    private final SearchService searchService;
 
     @Value("${search-settings.delay}")
     private int delay;
@@ -108,19 +110,30 @@ public class IndexingServiceImpl implements IndexingService {
             return;
         }
 
+        deleteSiteDataByUrl(siteConfig.getUrl());
+
+        Site siteEntity = new Site();
+        siteEntity.setUrl(siteConfig.getUrl());
+        siteEntity.setName(siteConfig.getName());
+        siteEntity.setStatus(SiteStatus.INDEXING);
+        siteEntity.setStatusTime(LocalDateTime.now(ZoneOffset.UTC));
+        siteRepository.save(siteEntity);
+
+        try {
+            Jsoup.connect(siteConfig.getUrl()).execute();
+        } catch (Exception e) {
+            String errorMessage = "Главная страница сайта недоступна: " + e.getMessage();
+            System.err.println(errorMessage);
+            siteEntity.setLastError(errorMessage);
+            siteEntity.setStatus(SiteStatus.FAILED);
+            siteRepository.save(siteEntity);
+            return;
+        }
+
         ForkJoinPool forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
         activePools.put(siteConfig.getName(), forkJoinPool);
-        Site siteEntity = null;
+
         try {
-            deleteSiteDataByUrl(siteConfig.getUrl());
-
-            siteEntity = new Site();
-            siteEntity.setUrl(siteConfig.getUrl());
-            siteEntity.setName(siteConfig.getName());
-            siteEntity.setStatus(SiteStatus.INDEXING);
-            siteEntity.setStatusTime(LocalDateTime.now(ZoneOffset.UTC));
-            siteRepository.save(siteEntity);
-
             Set<String> visitedUrls = ConcurrentHashMap.newKeySet();
             visitedUrls.add(siteEntity.getUrl());
 
@@ -137,15 +150,11 @@ public class IndexingServiceImpl implements IndexingService {
         } catch (Exception e) {
             System.err.println("Критическая ошибка при индексации сайта " + siteConfig.getName());
             e.printStackTrace();
-            if (siteEntity != null) {
-                siteEntity.setStatus(SiteStatus.FAILED);
-                siteEntity.setLastError("Внутренняя ошибка индексатора: " + e.getMessage());
-            }
+            siteEntity.setStatus(SiteStatus.FAILED);
+            siteEntity.setLastError("Внутренняя ошибка индексатора: " + e.getMessage());
         } finally {
-            if (siteEntity != null) {
-                siteEntity.setStatusTime(LocalDateTime.now(ZoneOffset.UTC));
-                siteRepository.save(siteEntity);
-            }
+            siteEntity.setStatusTime(LocalDateTime.now(ZoneOffset.UTC));
+            siteRepository.save(siteEntity);
             if (!forkJoinPool.isShutdown()) {
                 forkJoinPool.shutdown();
             }
@@ -227,8 +236,7 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public SearchResponse search(String query, String site, int offset, int limit) {
-
-        return new SearchResponse(false, "Поиск в данный момент не реализован.");
+        return searchService.search(query, site, offset, limit);
     }
 
     public static boolean isIndexing() {

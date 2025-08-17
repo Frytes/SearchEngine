@@ -11,6 +11,7 @@ import searchengine.model.SiteStatus;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.indexing.IndexingServiceImpl;
 
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -29,6 +30,9 @@ public class StatisticsServiceImpl implements StatisticsService {
         TotalStatistics total = new TotalStatistics();
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
         List<Site> sitesList = siteRepository.findAll();
+
+        boolean isIndexing = IndexingServiceImpl.isIndexing() || sitesList.stream().anyMatch(s -> s.getStatus() == searchengine.model.SiteStatus.INDEXING);
+        total.setIndexing(isIndexing);
 
         total.setSites(sitesList.size());
         total.setIndexing(sitesList.stream().anyMatch(s -> s.getStatus() == SiteStatus.INDEXING));

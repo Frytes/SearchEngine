@@ -3,7 +3,6 @@ package searchengine.services.crawler;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
-import org.jsoup.UnsupportedMimeTypeException;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
@@ -13,15 +12,12 @@ import searchengine.dto.crawler.PageProcessingResult;
 import searchengine.dto.indexing.LemmaDto;
 import searchengine.model.Page;
 import searchengine.model.Site;
-import searchengine.model.SiteStatus;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.services.lemma.DataCollector;
 import searchengine.services.lemma.LemmaEngine;
 
-import java.net.SocketTimeoutException;
 import java.net.URI;
-import java.net.UnknownHostException;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.HashSet;
@@ -86,32 +82,13 @@ public class PageProcessorServiceImpl implements PageProcessorService {
                 return PageProcessingResult.failure();
             }
 
-        } catch (UnsupportedMimeTypeException e) {
-            System.err.println("Пропуск (неподдерживаемый тип контента): " + pageUrl);
-        } catch (SocketTimeoutException | java.net.SocketException | UnknownHostException e) {
-            handleNetworkError(pageUrl, siteEntity, e);
-        } catch (IllegalArgumentException e) {
-            System.err.println("Игнорирую некорректный URL: " + pageUrl + " - " + e.getMessage());
         } catch (Exception e) {
-            handleGenericError(pageUrl, siteEntity, e);
+            String errorMessage = "Ошибка обхода страницы " + pageUrl + ": " + e.getMessage();
+            System.err.println(errorMessage);
+            siteEntity.setLastError(errorMessage);
+            siteRepository.save(siteEntity);
+            return PageProcessingResult.failure();
         }
-        return PageProcessingResult.failure();
-    }
-
-    private void handleNetworkError(String pageUrl, Site site, Exception e) {
-        String errorMessage = "Ошибка сети для " + pageUrl + ": " + e.getClass().getSimpleName() + " - " + e.getMessage();
-        System.err.println(errorMessage);
-        site.setLastError(errorMessage);
-        site.setStatus(SiteStatus.FAILED);
-        siteRepository.save(site);
-    }
-
-    private void handleGenericError(String pageUrl, Site site, Exception e) {
-        String errorMessage = "Критическая ошибка обхода " + pageUrl + ": " + e.getClass().getSimpleName() + " - " + e.getMessage();
-        System.err.println(errorMessage);
-        site.setLastError(errorMessage);
-        site.setStatus(SiteStatus.FAILED);
-        siteRepository.save(site);
     }
 
     private Set<String> extractLinks(Document document, String siteBaseUrl) {
@@ -122,12 +99,13 @@ public class PageProcessorServiceImpl implements PageProcessorService {
 
             for (Element element : elements) {
                 String absUrl = element.attr("abs:href");
-                if (absUrl.isEmpty() || absUrl.contains("#")) {
+
+                // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+                // Новое регулярное выражение, которое игнорирует параметры в URL
+                if (absUrl.isEmpty() || absUrl.contains("#") || absUrl.matches("(?i).*\\.(pdf|docx?|xlsx?|jpg|jpeg|png|gif|webp|zip|rar|exe|mp3|mp4|avi|mov|svg)(\\?.*)?$")) {
                     continue;
                 }
-                if (absUrl.matches("(?i).*\\.(pdf|docx?|xlsx?|ppt|pptx|jpg|jpeg|png|gif|webp|zip|rar|exe|bin|mp3|mp4|avi)(\\?.*)?$")) {
-                    continue;
-                }
+
                 try {
                     URI linkUri = new URI(absUrl);
                     String normalizedLinkHost = normalizeHost(linkUri.getHost());

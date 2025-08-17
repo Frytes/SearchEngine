@@ -7,6 +7,7 @@ import searchengine.model.Site;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     @Transactional
@@ -14,6 +15,9 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     int countBySite(Site site);
     List<Lemma> findAllBySiteAndLemmaIn(Site site, Collection<String> lemmas);
     Optional<Lemma> findBySiteAndLemma(Site site, String lemmaString);
+    List<Lemma> findAllByLemmaIn(Collection<String> lemmas);
+
+    List<Lemma> findAllByLemmaInAndSiteIn(Collection<String> lemmas, Collection<Site> sites);
 }
 
 

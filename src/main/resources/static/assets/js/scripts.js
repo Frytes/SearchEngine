@@ -1442,6 +1442,7 @@ var table = function(){
 table().init();
 
 var API = function(){
+    var isInitialLoad = true;
     function sendData(address, type, data, cb, $this) {
         $.ajax({
             url: backendApiUrl + address,
@@ -1582,6 +1583,7 @@ var API = function(){
                                 $this.next('.API-error').remove();
                             }
 
+                            var selectedSite = $('select[name="site"]').val();
 
                             var openUrl = $('.Statistics .HideBlock:not(.HideBlock_CLOSE)').data('url');
 
@@ -1655,8 +1657,21 @@ var API = function(){
                                     $this.removeClass('Tabs-block_update');
                                 });
                             });
+                            if (selectedSite) {
+                                        $('select[name="site"]').val(selectedSite);
+                                    }
+                            if (isInitialLoad) {
+                                        var isNowIndexing = result.statistics.total.indexing;
+                                        var $btnIndex = $('.btn[data-btntype="check"]');
+                                        var isButtonInStopState = $btnIndex.data('send') === 'stopIndexing';
 
-
+                                        if (isNowIndexing && !isButtonInStopState) {
+                                            shiftCheck($btnIndex);
+                                        } else if (!isNowIndexing && isButtonInStopState) {
+                                            shiftCheck($btnIndex);
+                                        }
+                                        isInitialLoad = false;
+                                    }
                             if (openUrl) {
                                                     var $blockToOpen = $('.Statistics .HideBlock[data-url="' + openUrl + '"]');
                                                     $blockToOpen.addClass('no-transition');
@@ -1666,15 +1681,7 @@ var API = function(){
                                                     }, 10);
                                                 }
 
-                            var isNowIndexing = result.statistics.total.indexing;
-                            var $btnIndex = $('.btn[data-btntype="check"]');
-                            var isButtonInStopState = $btnIndex.data('send') === 'stopIndexing';
 
-                            if (isNowIndexing && !isButtonInStopState) {
-                                shiftCheck($btnIndex);
-                            } else if (!isNowIndexing && isButtonInStopState) {
-                                shiftCheck($btnIndex);
-                            }
 
                         } else {
                             if ($this.next('.API-error').length) {
@@ -1742,6 +1749,11 @@ var API = function(){
 
 
                                         setInterval(function(){
+
+                                            if ($('#search').is(':visible')) {
+                                                 return;
+                                            }
+
                                             sendData(
                                                 send['statistics'].address,
                                                 send['statistics'].type,
@@ -1753,7 +1765,18 @@ var API = function(){
                                     },
                                     error: function() {
                                         console.error("Не удалось загрузить настройки фронтенда, используется интервал по умолчанию (5000 мс).");
-
+                                         setInterval(function(){
+                                            if ($('#search').is(':visible')) {
+                                                return;
+                                            }
+                                            sendData(
+                                                send['statistics'].address,
+                                                send['statistics'].type,
+                                                '',
+                                                send['statistics'].action,
+                                                $('.Statistics')
+                                            );
+                                        }, 5000);
                                     }
                                 });
 
