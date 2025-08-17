@@ -13,7 +13,7 @@ import searchengine.repositories.LemmaRepository;
 
 import javax.persistence.EntityManager;
 import java.util.*;
-import java.util.stream.Collectors;
+
 
 @Service
 @RequiredArgsConstructor
