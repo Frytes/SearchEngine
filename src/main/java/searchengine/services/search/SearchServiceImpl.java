@@ -133,23 +133,16 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private List<SearchData> calculateRelevanceAndPrepareData(List<Page> pages, Set<String> queryLemmas, String query) {
-
         List<Page> pagesWithSites = pageRepository.findPagesWithSites(pages);
-        List<Lemma> allRelevantLemmas = lemmaRepository.findAllByLemmaInAndSiteIn(queryLemmas,
-                pagesWithSites.stream().map(Page::getSite).collect(Collectors.toList()));
-
-
-        Map<Integer, List<Lemma>> siteIdToLemmasMap = allRelevantLemmas.stream()
-                .collect(Collectors.groupingBy(l -> l.getSite().getId()));
 
         Map<Page, Float> pageRelevance = new HashMap<>();
         float maxAbsoluteRelevance = 0.0f;
 
-
         for (Page page : pagesWithSites) {
-            List<Lemma> lemmasForSite = siteIdToLemmasMap.getOrDefault(page.getSite().getId(), Collections.emptyList());
-            if (lemmasForSite.isEmpty()) continue;
-
+            List<Lemma> lemmasForSite = lemmaRepository.findAllBySiteAndLemmaIn(page.getSite(), queryLemmas);
+            if (lemmasForSite.isEmpty()) {
+                continue;
+            }
 
             List<SearchIndex> indexes = indexRepository.findAllByPageAndLemmaIn(page, lemmasForSite);
             float absoluteRelevance = indexes.stream().map(SearchIndex::getRank).reduce(0f, Float::sum);
@@ -168,7 +161,6 @@ public class SearchServiceImpl implements SearchService {
 
         final float finalMaxRelevance = maxAbsoluteRelevance > 0 ? maxAbsoluteRelevance : 1.0f;
 
-
         return pageRelevance.entrySet().stream()
                 .map(entry -> {
                     Page page = entry.getKey();
@@ -182,27 +174,35 @@ public class SearchServiceImpl implements SearchService {
                             absoluteRelevance / finalMaxRelevance
                     );
                 })
+                .sorted(Comparator.comparing(SearchData::getRelevance).reversed())
                 .collect(Collectors.toList());
     }
 
     private String generateSnippet(String htmlContent, String originalQuery, Set<String> queryLemmas) {
         String text = Jsoup.parse(htmlContent).text().replaceAll("\\s+", " ").trim();
-        String[] sentences = text.split("(?<=[.!?])\\s*");
 
-        Optional<String> bestSentence = Arrays.stream(sentences)
+        Optional<String> bestSentenceOpt = Arrays.stream(text.split("(?<=[.!?])\\s*"))
                 .map(s -> new AbstractMap.SimpleEntry<>(s, countLemmaOccurrences(s, queryLemmas)))
                 .filter(entry -> entry.getValue() > 0)
                 .max(Comparator.comparingInt(AbstractMap.SimpleEntry::getValue))
                 .map(AbstractMap.SimpleEntry::getKey);
 
-        String snippet = bestSentence.orElse(text.substring(0, Math.min(text.length(), 250)));
+        String snippetText = bestSentenceOpt.orElse(text.substring(0, Math.min(text.length(), 250)));
 
         Set<String> queryWords = new HashSet<>(Arrays.asList(originalQuery.toLowerCase().split("\\s+")));
-        for (String word : queryWords) {
-            snippet = snippet.replaceAll("(?i)(" + word + "[а-я]*)", "<b>$1</b>");
+        String[] snippetParts = snippetText.split("(?<=[\\s.,!?;:\"'()])|(?=[\\s.,!?;:\"'()])");
+
+        StringBuilder resultSnippet = new StringBuilder();
+
+        for (String part : snippetParts) {
+              if (queryWords.contains(part.toLowerCase())) {
+                resultSnippet.append("<b>").append(part).append("</b>");
+            } else {
+                resultSnippet.append(part);
+            }
         }
 
-        return snippet;
+        return resultSnippet.toString();
     }
 
     private int countLemmaOccurrences(String sentence, Set<String> queryLemmas) {

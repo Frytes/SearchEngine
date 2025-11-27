@@ -9,6 +9,7 @@ import searchengine.model.Page;
 import searchengine.model.SearchIndex;
 import searchengine.model.Site;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface IndexRepository extends JpaRepository<SearchIndex, Integer> {
@@ -24,4 +25,5 @@ public interface IndexRepository extends JpaRepository<SearchIndex, Integer> {
 
     @Query("SELECT i.page FROM SearchIndex i WHERE i.lemma.lemma = :lemmaString")
     List<Page> findDistinctPagesByLemmaString(@Param("lemmaString") String lemmaString);
+    List<SearchIndex> findAllByPageInAndLemmaIn(Collection<Page> pages, Collection<Lemma> lemmas);
 }

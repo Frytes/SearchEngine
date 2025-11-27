@@ -44,7 +44,6 @@ public class LemmaEngineImpl implements LemmaEngine {
             }
         } catch (IOException e) {
             System.err.println("Произошла ошибка при анализе текста: " + e.getMessage());
-            e.printStackTrace();
         }
         return lemmaMap;
     }
