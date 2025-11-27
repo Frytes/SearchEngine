@@ -1,6 +1,7 @@
 package searchengine.services.crawler;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -24,6 +25,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PageProcessorServiceImpl implements PageProcessorService {
@@ -84,7 +86,7 @@ public class PageProcessorServiceImpl implements PageProcessorService {
 
         } catch (Exception e) {
             String errorMessage = "Ошибка обхода страницы " + pageUrl + ": " + e.getMessage();
-            System.err.println(errorMessage);
+            log.warn(errorMessage);
             siteEntity.setLastError(errorMessage);
             siteRepository.save(siteEntity);
             return PageProcessingResult.failure();
@@ -100,8 +102,6 @@ public class PageProcessorServiceImpl implements PageProcessorService {
             for (Element element : elements) {
                 String absUrl = element.attr("abs:href");
 
-                // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-                // Новое регулярное выражение, которое игнорирует параметры в URL
                 if (absUrl.isEmpty() || absUrl.contains("#") || absUrl.matches("(?i).*\\.(pdf|docx?|xlsx?|jpg|jpeg|png|gif|webp|zip|rar|exe|mp3|mp4|avi|mov|svg)(\\?.*)?$")) {
                     continue;
                 }

@@ -1,6 +1,7 @@
 package searchengine.services.indexing;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskExecutor;
@@ -33,6 +34,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
@@ -51,6 +53,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final PageProcessorService pageProcessor;
     private final PageManagementService pageManagementService;
     private final SearchService searchService;
+    private final DbResetService dbResetService;
 
     @Value("${search-settings.delay}")
     private int delay;
@@ -72,6 +75,7 @@ public class IndexingServiceImpl implements IndexingService {
         if (isIndexingRunning.compareAndSet(false, true)) {
             new Thread(() -> {
                 try {
+                    dbResetService.resetDatabase();
                     activePools.clear();
                     Thread loggerThread = new Thread(this::logQueueStatus);
                     loggerThread.start();
@@ -95,7 +99,7 @@ public class IndexingServiceImpl implements IndexingService {
                     Thread.currentThread().interrupt();
                 } finally {
                     isIndexingRunning.set(false);
-                    System.out.println("Полная индексация всех сайтов завершена.");
+                    log.info("Полная индексация всех сайтов завершена.");
                 }
             }, "Indexing-Manager-Thread").start();
 
@@ -109,8 +113,6 @@ public class IndexingServiceImpl implements IndexingService {
         if (!isIndexingRunning.get()) {
             return;
         }
-
-        deleteSiteDataByUrl(siteConfig.getUrl());
 
         Site siteEntity = new Site();
         siteEntity.setUrl(siteConfig.getUrl());
@@ -148,10 +150,10 @@ public class IndexingServiceImpl implements IndexingService {
                 siteEntity.setLastError("Индексация остановлена пользователем");
             }
         } catch (Exception e) {
-            System.err.println("Критическая ошибка при индексации сайта " + siteConfig.getName());
-            e.printStackTrace();
-            siteEntity.setStatus(SiteStatus.FAILED);
-            siteEntity.setLastError("Внутренняя ошибка индексатора: " + e.getMessage());
+            if (siteEntity != null) {
+                siteEntity.setStatus(SiteStatus.FAILED);
+                siteEntity.setLastError("Внутренняя ошибка индексатора: " + e.getMessage());
+            }
         } finally {
             siteEntity.setStatusTime(LocalDateTime.now(ZoneOffset.UTC));
             siteRepository.save(siteEntity);
@@ -162,25 +164,6 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private void deleteSiteDataByUrl(String url) {
-        try {
-            URL urlObj = new URL(url);
-            String host = urlObj.getHost().replaceFirst("www\\.", "");
-            List<Site> sitesToDelete = siteRepository.findAllByUrlContaining(host);
-            for (Site site : sitesToDelete) {
-                deleteSiteData(site);
-            }
-        } catch (MalformedURLException e) {
-            System.err.println("Некорректный URL в конфигурации: " + url);
-        }
-    }
-
-    private void deleteSiteData(Site site) {
-        indexRepository.deleteAllByPageSite(site);
-        lemmaRepository.deleteAllBySite(site);
-        pageRepository.deleteAllBySite(site);
-        siteRepository.delete(site);
-    }
 
     @Override
     public IndexingResponse stopIndexing() {
